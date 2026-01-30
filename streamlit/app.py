@@ -10,13 +10,16 @@ st.title("🌍 Life Expectancy Data Visualization Dashboard")
 
 # ---------------- Load data ----------------
 @st.cache_data
+@st.cache_data
+@st.cache_data
 def load_data():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    for root, _, files in os.walk(base_dir):
-        if "LifeExpectancyData.csv" in files:
-            return pd.read_csv(os.path.join(root, "LifeExpectancyData.csv"))
-    st.error("Dataset not found")
-    st.stop()
+    csv_path = os.path.join("data", "LifeExpectancyData.csv")
+
+    if not os.path.exists(csv_path):
+        st.error("Dataset not found at data/LifeExpectancyData.csv")
+        st.stop()
+
+    return pd.read_csv(csv_path)
 
 df = load_data()
 
