@@ -4,149 +4,188 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# ---------- DEBUG: Find CSV file ----------
+# ---------------- Page config ----------------
+st.set_page_config(page_title="Life Expectancy Dashboard", layout="wide")
+st.title("🌍 Life Expectancy Data Visualization Dashboard")
 
-def find_csv_file():
-    """Find LifeExpectancyData.csv anywhere in project"""
-    candidates = []
-    
-    # 1. Look in data folder (expected)
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_path = os.path.join(project_root, "data", "LifeExpectancyData.csv")
-    candidates.append(data_path)
-    
-    # 2. Look in streamlit_app folder (where you put it)
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(os.path.join(app_dir, "LifeExpectancyData.csv"))
-    
-    # 3. Look in project root
-    candidates.append(os.path.join(project_root, "LifeExpectancyData.csv"))
-    
-    # 4. Search current directory and subdirs
-    for root, dirs, files in os.walk(project_root):
-        if "LifeExpectancyData.csv" in files:
-            candidates.append(os.path.join(root, "LifeExpectancyData.csv"))
-    
-    for path in candidates:
-        if os.path.exists(path):
-            st.sidebar.success(f"✅ Found CSV at: `{path}`")
-            return path
-    
-    st.error("❌ CSV not found! Looking for: LifeExpectancyData.csv")
-    st.error(f"Current app location: `{os.path.abspath(__file__)}`")
-    st.error(f"Project root: `{project_root}`")
-    return None
-
-# ---------- Load data ----------
-
+# ---------------- Load data ----------------
 @st.cache_data
-def load_data(csv_path):
-    df = pd.read_csv(csv_path)
-    df.columns = (
-        df.columns.str.strip()
-        .str.lower()
-        .str.replace(" ", "")
-        .str.replace("-", "")
-    )
-    return df
-
-# ---------- Main app ----------
-
-st.set_page_config(page_title="Life Expectancy Explorer", layout="wide")
-st.title("🔍 Life Expectancy Data Explorer")
-
-# Find the CSV
-csv_path = find_csv_file()
-if csv_path is None:
+def load_data():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    for root, _, files in os.walk(base_dir):
+        if "LifeExpectancyData.csv" in files:
+            return pd.read_csv(os.path.join(root, "LifeExpectancyData.csv"))
+    st.error("Dataset not found")
     st.stop()
 
-# Load data
-df = load_data(csv_path)
-st.success(f"Loaded {df.shape[0]:,} rows × {df.shape[1]} columns")
+df = load_data()
 
-# ---------- Filters ----------
-
-st.sidebar.header("Filters")
-years = sorted(df["year"].unique())
-year_selected = st.sidebar.multiselect("Year", years, default=years)
-status_selected = st.sidebar.multiselect(
-    "Country status",
-    sorted(df["status"].unique()),
-    default=list(df["status"].unique()),
+df.columns = (
+    df.columns.str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("-", "_")
 )
 
-mask = df["year"].isin(year_selected) & df["status"].isin(status_selected)
-df_filtered = df[mask]
+st.success(f"Dataset loaded: {df.shape[0]} rows × {df.shape[1]} columns")
 
-st.subheader("📊 Data Preview")
-st.dataframe(df_filtered.head())
+# ---------------- Sidebar filters ----------------
+st.sidebar.header("🔎 Filters")
 
-# ---------- Plots ----------
+years = sorted(df["year"].unique())
+statuses = sorted(df["status"].dropna().unique())
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📈 Life Expectancy Over Time",
-    "💰 GDP vs Life Expectancy", 
+selected_years = st.sidebar.multiselect(
+    "Select Years",
+    years,
+    default=years[-10:]
+)
+
+selected_status = st.sidebar.multiselect(
+    "Country Status",
+    statuses,
+    default=statuses
+)
+
+df_filtered = df[
+    df["year"].isin(selected_years)
+    & df["status"].isin(selected_status)
+]
+
+# ---------------- Tabs (ALL 10) ----------------
+tabs = st.tabs([
+    "📈 Avg Life Expectancy Over Time",
+    "🏆 Top 10 Countries",
+    "💰 GDP vs Life Expectancy",
     "⚠️ Adult Mortality vs Life Expectancy",
-    "📏 BMI vs Life Expectancy"
+    "📏 BMI vs Life Expectancy",
+    "📊 Life Expectancy Distribution",
+    "📦 Life Expectancy by Status",
+    "🎓 Schooling vs Life Expectancy",
+    "👶 Infant Deaths vs Life Expectancy",
+    "🔗 Correlation Heatmap"
 ])
 
-with tab1:
-    avglifeexp = df_filtered.groupby("year")["lifeexpectancy"].mean()
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(avglifeexp.index, avglifeexp.values, marker="o", linewidth=2, color="#2E86AB")
-    ax.set_title("Average Life Expectancy Over Time", fontsize=16, fontweight="bold")
+# 1️⃣ Line chart
+with tabs[0]:
+    avg_life = df_filtered.groupby("year")["life_expectancy"].mean()
+    fig, ax = plt.subplots()
+    ax.plot(avg_life.index, avg_life.values, marker="o")
+    ax.set_title("Average Life Expectancy Over Time")
     ax.set_xlabel("Year")
-    ax.set_ylabel("Life Expectancy (years)")
-    ax.grid(True, alpha=0.3)
+    ax.set_ylabel("Life Expectancy")
     st.pyplot(fig)
 
-with tab2:
+# 2️⃣ Bar chart
+with tabs[1]:
+    latest_year = df_filtered["year"].max()
+    top10 = (
+        df_filtered[df_filtered["year"] == latest_year]
+        .nlargest(10, "life_expectancy")
+    )
     fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(
+        data=top10,
+        x="life_expectancy",
+        y="country",
+        ax=ax
+    )
+    ax.set_title(f"Top 10 Countries by Life Expectancy ({latest_year})")
+    st.pyplot(fig)
+
+# 3️⃣ GDP scatter
+with tabs[2]:
+    fig, ax = plt.subplots()
     sns.scatterplot(
         data=df_filtered,
-        x="gdp", 
-        y="lifeexpectancy",
+        x="gdp",
+        y="life_expectancy",
         hue="status",
-        palette="coolwarm",
-        s=80,
-        alpha=0.7,
-        ax=ax,
+        ax=ax
     )
-    ax.set_title("GDP vs Life Expectancy", fontsize=16, fontweight="bold")
-    ax.set_xlabel("GDP per Capita")
-    ax.set_ylabel("Life Expectancy (years)")
+    ax.set_title("GDP vs Life Expectancy")
     st.pyplot(fig)
 
-with tab3:
-    fig, ax = plt.subplots(figsize=(10, 6))
+# 4️⃣ Adult mortality scatter
+with tabs[3]:
+    fig, ax = plt.subplots()
     sns.scatterplot(
         data=df_filtered,
-        x="adultmortality",
-        y="lifeexpectancy", 
+        x="adult_mortality",
+        y="life_expectancy",
         hue="status",
-        palette="magma",
-        s=80,
-        alpha=0.7,
-        ax=ax,
+        ax=ax
     )
-    ax.set_title("Adult Mortality vs Life Expectancy", fontsize=16, fontweight="bold")
-    ax.set_xlabel("Adult Mortality (per 1000)")
-    ax.set_ylabel("Life Expectancy (years)")
+    ax.set_title("Adult Mortality vs Life Expectancy")
     st.pyplot(fig)
 
-with tab4:
-    fig, ax = plt.subplots(figsize=(10, 6))
+# 5️⃣ BMI scatter
+with tabs[4]:
+    fig, ax = plt.subplots()
     sns.scatterplot(
         data=df_filtered,
         x="bmi",
-        y="lifeexpectancy",
+        y="life_expectancy",
         hue="status",
-        palette="Set2", 
-        s=80,
-        alpha=0.7,
-        ax=ax,
+        ax=ax
     )
-    ax.set_title("BMI vs Life Expectancy", fontsize=16, fontweight="bold")
-    ax.set_xlabel("Average BMI")
-    ax.set_ylabel("Life Expectancy (years)")
+    ax.set_title("BMI vs Life Expectancy")
+    st.pyplot(fig)
+
+# 6️⃣ Histogram
+with tabs[5]:
+    fig, ax = plt.subplots()
+    sns.histplot(df_filtered["life_expectancy"], bins=30, kde=True, ax=ax)
+    ax.set_title("Distribution of Life Expectancy")
+    st.pyplot(fig)
+
+# 7️⃣ Boxplot
+with tabs[6]:
+    fig, ax = plt.subplots()
+    sns.boxplot(
+        data=df_filtered,
+        x="status",
+        y="life_expectancy",
+        ax=ax
+    )
+    ax.set_title("Life Expectancy by Country Status")
+    st.pyplot(fig)
+
+# 8️⃣ Schooling scatter
+with tabs[7]:
+    fig, ax = plt.subplots()
+    sns.scatterplot(
+        data=df_filtered,
+        x="schooling",
+        y="life_expectancy",
+        hue="status",
+        ax=ax
+    )
+    ax.set_title("Schooling vs Life Expectancy")
+    st.pyplot(fig)
+
+# 9️⃣ Infant deaths scatter
+with tabs[8]:
+    fig, ax = plt.subplots()
+    sns.scatterplot(
+        data=df_filtered,
+        x="infant_deaths",
+        y="life_expectancy",
+        hue="status",
+        ax=ax
+    )
+    ax.set_title("Infant Deaths vs Life Expectancy")
+    st.pyplot(fig)
+
+# 🔟 Correlation heatmap
+with tabs[9]:
+    numeric_df = df_filtered.select_dtypes(include="number")
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(
+        numeric_df.corr(),
+        cmap="coolwarm",
+        linewidths=0.5,
+        ax=ax
+    )
+    ax.set_title("Correlation Heatmap")
     st.pyplot(fig)
